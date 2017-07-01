@@ -70,8 +70,6 @@ public class BatchGradientDescend {
                 total_error = current_error;
             }
 
-            System.out.println(current_error);
-
         }
 
         return params;
@@ -90,7 +88,7 @@ public class BatchGradientDescend {
      *
      * @return          значение функции стоимости.
      */
-    private static double cost_function(Double[] y, Double[][] x, Double[] params) {
+    public static double cost_function(Double[] y, Double[][] x, Double[] params) {
 
         double result = 0.0;
 
