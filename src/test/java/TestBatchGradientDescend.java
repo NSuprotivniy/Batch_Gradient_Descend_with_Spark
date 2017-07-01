@@ -37,7 +37,7 @@ public class TestBatchGradientDescend {
     public void init_curve_params() {
 
         dimension = 3;
-        sample_size = 100;
+        sample_size = 10_000;
         y = new Double[sample_size];
         x = new Double[dimension][];
         params = new Double[dimension + 1];
@@ -145,13 +145,15 @@ public class TestBatchGradientDescend {
             average_square += Math.pow(spark_params[i] - single_threaded_params[i], 2);
         }
 
+        average_square = Math.sqrt(average_square);
+
         System.out.println(average_square);
 
         // Точность совпадения отклонений.
-        double accuracy = 0.0001;
+        double accuracy = 0.1;
 
         Assert.assertTrue("Approximation accuracy by params getting with spark and with single should be same",
-               Math.sqrt(average_square) < accuracy);
+                average_square < accuracy);
 
     }
 

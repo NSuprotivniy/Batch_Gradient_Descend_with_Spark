@@ -182,7 +182,7 @@ public class BatchGradientDescend {
         for (int iteration = 0; iteration < max_iteration; iteration++) {
 
             // Вычисление очередного приближения вектора параметров регрессии.
-            for (int i = 0; i < dimension; i++) {
+            for (int i = 0; i < dimension + 1; i++) {
                 double cost = cost_function_derivative(y, x, params, i);
                 params[i] += learning_rate * cost / sample_size;
             }
@@ -191,7 +191,7 @@ public class BatchGradientDescend {
             double current_error = cost_function(y, x, params);
 
             // Если изменения меньше заданного порога, то результат принимается.
-            if (Math.sqrt(current_error - total_error) < convergence_criteria) {
+            if (Math.abs(current_error - total_error) < convergence_criteria) {
                 System.out.println("DONE. Iteration " + iteration);
                 break;
             } else {
@@ -264,7 +264,14 @@ public class BatchGradientDescend {
                 cost_function_addition -= params[j] * x[j][i];
             }
 
-            result += cost_function_addition * x[derivative_num][i];
+            if (derivative_num == dim) {
+                result += cost_function_addition;
+            }
+            else {
+                result += cost_function_addition * x[derivative_num][i];
+            }
+
+
         }
 
         return result;
