@@ -1,3 +1,8 @@
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.broadcast.Broadcast;
+import org.apache.spark.util.DoubleAccumulator;
+
 /**
  * В классе реализованы методы поиска коэффициентов линейной регрессии методом градиентного спуска.
  *
@@ -14,8 +19,131 @@ public class BatchGradientDescend {
 
     }
 
-    public void runWithSpark() {
+    /**
+     * Функция поиска коэффициентов линейной регрессии с помощью фреймворка Spark.
+     * Выполняется обработка выборки точек, распределённых по вычислительным машинам кластера.
+     * На каждой машине вычисляется часть очередного приближения коэффициента регрессии,
+     * затем все части складываются и вычисляется коэффициент, который сохраняется на драйвере.
+     *
+     * Когда все коэффициенты подсчитаны, вычисляется значение функции стоимости также с использованием
+     * рабочих машин и выборки точек, хранящейся на них.
+     *
+     * @param jsc                   контекст spark программы.
+     * @param curve                 ссылка на выборку точек линейной регрессии.
+     * @param sample_size           количество точек в выборке.
+     * @param dim                   размерность вектора зависимых аргументов x.
+     * @param learning_rate         скорость поиска минимума.
+     * @param max_iteration         максимальное количество шагов работы алгоритма.
+     * @param convergence_criteria  допустимое значение погрешности результата.
+     *
+     * @return                      вектор коэффициентов линейной регрессии или null.
+     */
+    public static Double[] runWithSpark(JavaSparkContext jsc,
+                                     JavaPairRDD<Double[], Double> curve,
+                                     int sample_size,
+                                     int dim,
+                                     double learning_rate,
+                                     int max_iteration,
+                                     double convergence_criteria) {
 
+        // Последнее значение функции ошибки. Нальное значение инициализируется как наибольшее.
+        Double total_error = Double.MAX_VALUE;
+
+        // Инициализация начального приближения параметров регрессиии: единичный вектор.
+        // Одна копия (params_driver) хранится на драйвере, другая (params_broadcast) на каждой рабочей машине кластера.
+        Double[] params_driver = new Double[dim + 1];
+        for (int i = 0; i < params_driver.length; i++) params_driver[i] = 1.0;
+        Broadcast<Double[]> params_broadcast = jsc.broadcast(params_driver);
+
+
+        // За ограниченное количество итераций.
+        for (int iter = 0; iter < max_iteration; iter++) {
+
+            // Ссылка на распределённый по рабочим машинам вектор коэффициентов.
+            Broadcast<Double[]> params_broadcast_1 = params_broadcast;
+
+            // Для каждого коэффициента регрессии.
+            for (int j = 0; j < dim + 1; j++) {
+
+                // Сохраняем индекс вычисляемого коэффициента на рабочих машинах.
+                Broadcast<Integer> params_index_broadcast = jsc.broadcast(j);
+
+                // Сохраняем значение коэффициента на рабочих значеним.
+                // После подсчётов аккумулятор будет хранить новое значение коэффициента.
+                DoubleAccumulator params_elem_accum = jsc.sc().doubleAccumulator();
+                params_elem_accum.setValue(params_driver[j]);
+
+                // Находим значение коэффициента регрессии.
+                curve.foreach((tuple) -> {
+
+                    Double[] x = tuple._1();
+                    Double y = tuple._2();
+
+                    Integer params_index = params_index_broadcast.getValue();
+                    Double[] params_node = params_broadcast_1.getValue();
+
+
+                    Double h = params_node[0];
+
+                    for (int i = 0; i < dim; i++) {
+                        h += params_driver[i + 1] * x[i];
+                    }
+
+                    Double J;
+                    if (params_index == 0) {
+                        J = (y - h);
+                    } else {
+                        J = (y - h) * x[params_index - 1];
+                    }
+
+                    params_elem_accum.add(J);
+                });
+
+                params_driver[j] = learning_rate * params_elem_accum.value() / sample_size;
+            }
+
+            // Сохраняем вычисленный вектор коэффициентов на рабочих машинах для
+            // получения значения функции стоимости и использования на следующем шаге.
+            params_broadcast = jsc.broadcast(params_driver);
+
+            // Ссылка на распределённый по рабочим машинам вектор коэффициентов.
+            Broadcast<Double[]> params_broadcast_2 = params_broadcast;
+
+            // Аккумулятор накапливает
+            DoubleAccumulator total_error_accum = jsc.sc().doubleAccumulator();
+
+
+            // Вычисление значения функции стоимости.
+            curve.foreach((tuple) -> {
+
+                Double[] x = tuple._1();
+                Double y = tuple._2();
+
+                Double[] error_node = params_broadcast_2.getValue();
+                Double h = error_node[0] - y;
+
+                for (int i = 0; i < dim; i++) {
+                    h += params_driver[i + 1] * x[i];
+                }
+
+                total_error_accum.add(h * h);
+
+            });
+
+            Double error = Math.sqrt(total_error_accum.value());
+
+            // Сравнение изменения значения функции стоимости с пороговым значением.
+            if (Math.abs(total_error - error) < convergence_criteria) {
+                System.out.println("DONE. Iteration " + iter);
+                break;
+            }
+            else {
+                total_error = error;
+            }
+
+        }
+
+        return params_driver;
     }
 
     /**
