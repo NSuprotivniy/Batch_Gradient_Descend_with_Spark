@@ -15,9 +15,6 @@ import org.apache.spark.util.DoubleAccumulator;
  */
 public class BatchGradientDescend {
 
-    BatchGradientDescend() {
-
-    }
 
     /**
      * Функция поиска коэффициентов линейной регрессии с помощью фреймворка Spark.
@@ -40,7 +37,7 @@ public class BatchGradientDescend {
      */
     public static Double[] runWithSpark(JavaSparkContext jsc,
                                      JavaPairRDD<Double[], Double> curve,
-                                     int sample_size,
+                                     long sample_size,
                                      int dimension,
                                      double learning_rate,
                                      int max_iteration,
