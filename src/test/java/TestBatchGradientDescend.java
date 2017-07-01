@@ -1,7 +1,14 @@
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import scala.Tuple2;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -9,12 +16,18 @@ import java.util.Random;
  */
 public class TestBatchGradientDescend {
 
-
+    // Параметры выборки.
     private Double[] y;      // вектор значений объясняемой переменной.
     private Double[][] x;    // таблица векторов значений зависимых аргументов.
     private Double[] params; // вектор коэффициентов исходной функции.
     private int dimension;   // размерность вектора зависимых аргументов x.
     private int sample_size; // количество точек в выборке.
+
+    // Параметры градиаентного спуска.
+    double learning_rate = 1.0;             // скорость поиска минимума.
+    int max_iteration = 1024;               // максимальное количество шагов работы алгоритма.
+    double convergence_criteria = 0.0001;   // допустимое значение погрешности результата.
+
 
 
     /**
@@ -49,11 +62,6 @@ public class TestBatchGradientDescend {
      */
     @Test
     public void test_runWithSingleThread() {
-
-        // Параметры градиаентного спуска.
-        double learning_rate = 1.0;
-        int max_iteration = 1024;
-        double convergence_criteria = 0.0001;
 
         // Поиск коэффициентов регрессии.
         Double[] regression_params = BatchGradientDescend.runWithSingleThread(y, x, dimension, learning_rate, max_iteration, convergence_criteria );
@@ -101,9 +109,76 @@ public class TestBatchGradientDescend {
             average_square_real_params_and_new_regression_params += Math.pow(params[i] - new_regression_params[i], 2);
         }
 
+        System.out.println(average_square_real_params_and_regression_params);
+        System.out.println(average_square_real_params_and_new_regression_params);
+
         Assert.assertTrue("New approximation should be more acurate",
                 average_square_real_params_and_regression_params >= average_square_real_params_and_new_regression_params);
 
+    }
+
+    /**
+     * Тестирование многопоточной реализации поиска коэффициентов линейной регрессии с использованием spark.
+     * По заданным в init_curve_params() исходным данным строится вектор параметров регрессии c помощью spark.
+     * По этим же данным строится вектор с помощью однопоточной реализации.
+     * Два результата сравниваются между собой через среднеквадратичное отклонение.
+     */
+    @Test
+    public void test_runWithSpark() {
+
+        // Задаём spark контест.
+        SparkConf conf = new SparkConf().setAppName("test_app").setMaster("local[*]");
+        JavaSparkContext jsc = new JavaSparkContext(conf);
+
+        // Сохраним выборку в RDD.
+        JavaPairRDD<Double[], Double> curve = spark_RDD(jsc);
+
+        // Поиск коэффициентов регрессии с помощью spark.
+        Double[] spark_params = BatchGradientDescend.runWithSpark(jsc, curve, sample_size, dimension, learning_rate, max_iteration, convergence_criteria);
+        // Поиск коэффициентов регрессии однопоточно.
+        Double[] single_threaded_params = BatchGradientDescend.runWithSingleThread(y, x, dimension, learning_rate, max_iteration, convergence_criteria );
+
+        // Среднеквадратичное отклонение векторов, полученноых с помощью spark реализации и однопоточной реализации.
+        double average_square = 0.0;
+
+        for (int i = 0; i < dimension + 1; i++) {
+            average_square += Math.pow(spark_params[i] - single_threaded_params[i], 2);
+        }
+
+        System.out.println(average_square);
+
+        // Точность совпадения отклонений.
+        double accuracy = 0.0001;
+
+        Assert.assertTrue("Approximation accuracy by params getting with spark and with single should be same",
+               Math.sqrt(average_square) < accuracy);
+
+    }
+
+
+    /**
+     * Сохраняет выборку в spark RDD в виде пары колекции пар <x[], y>,
+     * каждая из которых описывает одну точку.
+     *
+     * @param jsc   spark контекст.
+     * @return      ссылка на выборку точек линейной регрессии в spark RDD.
+     */
+    private JavaPairRDD<Double[], Double> spark_RDD(JavaSparkContext jsc) {
+
+        List<Tuple2<Double[], Double>> curve_list = new ArrayList<>(sample_size);
+
+        for (int i = 0; i < sample_size; i++) {
+            Double[] vector = new Double[dimension];
+            for (int j = 0; j < dimension; j++) {
+                vector[j] = x[j][i];
+            }
+            Tuple2<Double[], Double> tuple = new Tuple2<>(vector, y[i]);
+            curve_list.add(tuple);
+        }
+
+        JavaRDD<Tuple2<Double[], Double>> rdd = jsc.parallelize(curve_list);
+
+        return JavaPairRDD.fromJavaRDD(rdd);
     }
 
     /**

@@ -31,7 +31,7 @@ public class BatchGradientDescend {
      * @param jsc                   контекст spark программы.
      * @param curve                 ссылка на выборку точек линейной регрессии.
      * @param sample_size           количество точек в выборке.
-     * @param dim                   размерность вектора зависимых аргументов x.
+     * @param dimension             размерность вектора зависимых аргументов x.
      * @param learning_rate         скорость поиска минимума.
      * @param max_iteration         максимальное количество шагов работы алгоритма.
      * @param convergence_criteria  допустимое значение погрешности результата.
@@ -41,7 +41,7 @@ public class BatchGradientDescend {
     public static Double[] runWithSpark(JavaSparkContext jsc,
                                      JavaPairRDD<Double[], Double> curve,
                                      int sample_size,
-                                     int dim,
+                                     int dimension,
                                      double learning_rate,
                                      int max_iteration,
                                      double convergence_criteria) {
@@ -51,27 +51,27 @@ public class BatchGradientDescend {
 
         // Инициализация начального приближения параметров регрессиии: единичный вектор.
         // Одна копия (params_driver) хранится на драйвере, другая (params_broadcast) на каждой рабочей машине кластера.
-        Double[] params_driver = new Double[dim + 1];
+        Double[] params_driver = new Double[dimension + 1];
         for (int i = 0; i < params_driver.length; i++) params_driver[i] = 1.0;
         Broadcast<Double[]> params_broadcast = jsc.broadcast(params_driver);
 
 
         // За ограниченное количество итераций.
-        for (int iter = 0; iter < max_iteration; iter++) {
+        for (int iteration = 0; iteration < max_iteration; iteration++) {
 
             // Ссылка на распределённый по рабочим машинам вектор коэффициентов.
             Broadcast<Double[]> params_broadcast_1 = params_broadcast;
 
             // Для каждого коэффициента регрессии.
-            for (int j = 0; j < dim + 1; j++) {
+            for (int j = 0; j < dimension + 1; j++) {
 
                 // Сохраняем индекс вычисляемого коэффициента на рабочих машинах.
-                Broadcast<Integer> params_index_broadcast = jsc.broadcast(j);
+                Broadcast<Integer> derivative_num_broadcast = jsc.broadcast(j);
 
                 // Сохраняем значение коэффициента на рабочих значеним.
                 // После подсчётов аккумулятор будет хранить новое значение коэффициента.
-                DoubleAccumulator params_elem_accum = jsc.sc().doubleAccumulator();
-                params_elem_accum.setValue(params_driver[j]);
+                DoubleAccumulator params_elem_acum = jsc.sc().doubleAccumulator();
+                params_elem_acum.setValue(params_driver[j]);
 
                 // Находим значение коэффициента регрессии.
                 curve.foreach((tuple) -> {
@@ -79,27 +79,27 @@ public class BatchGradientDescend {
                     Double[] x = tuple._1();
                     Double y = tuple._2();
 
-                    Integer params_index = params_index_broadcast.getValue();
+                    Integer derivative_num_node = derivative_num_broadcast.getValue();
                     Double[] params_node = params_broadcast_1.getValue();
 
 
-                    Double h = params_node[0];
+                    Double h = params_node[dimension];
 
-                    for (int i = 0; i < dim; i++) {
-                        h += params_driver[i + 1] * x[i];
+                    for (int i = 0; i < dimension; i++) {
+                        h += params_node[i] * x[i];
                     }
 
                     Double J;
-                    if (params_index == 0) {
+                    if (derivative_num_node == dimension) {
                         J = (y - h);
                     } else {
-                        J = (y - h) * x[params_index - 1];
+                        J = (y - h) * x[derivative_num_node];
                     }
 
-                    params_elem_accum.add(J);
+                    params_elem_acum.add(J);
                 });
 
-                params_driver[j] = learning_rate * params_elem_accum.value() / sample_size;
+                params_driver[j] += learning_rate * params_elem_acum.value() / sample_size;
             }
 
             // Сохраняем вычисленный вектор коэффициентов на рабочих машинах для
@@ -119,11 +119,11 @@ public class BatchGradientDescend {
                 Double[] x = tuple._1();
                 Double y = tuple._2();
 
-                Double[] error_node = params_broadcast_2.getValue();
-                Double h = error_node[0] - y;
+                Double[] params_node = params_broadcast_2.getValue();
+                Double h = params_node[dimension] - y;
 
-                for (int i = 0; i < dim; i++) {
-                    h += params_driver[i + 1] * x[i];
+                for (int i = 0; i < dimension; i++) {
+                    h += params_node[i] * x[i];
                 }
 
                 total_error_accum.add(h * h);
@@ -134,7 +134,7 @@ public class BatchGradientDescend {
 
             // Сравнение изменения значения функции стоимости с пороговым значением.
             if (Math.abs(total_error - error) < convergence_criteria) {
-                System.out.println("DONE. Iteration " + iter);
+                System.out.println("DONE. Iteration " + iteration);
                 break;
             }
             else {
