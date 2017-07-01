@@ -10,7 +10,7 @@ public class TestBatchGradientDescend {
     public void test_runWithSpark() {
 
     }
-    
+
     @Test
     public void test_runWithSingleThread() {
 
