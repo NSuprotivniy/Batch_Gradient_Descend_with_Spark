@@ -1,3 +1,5 @@
+package Main;
+
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.broadcast.Broadcast;
@@ -42,6 +44,8 @@ public class BatchGradientDescend {
                                      double learning_rate,
                                      int max_iteration,
                                      double convergence_criteria) {
+
+        System.out.println(jsc);
 
         // Последнее значение функции ошибки. Нальное значение инициализируется как наибольшее.
         Double total_error = Double.MAX_VALUE;

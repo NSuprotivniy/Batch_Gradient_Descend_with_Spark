@@ -1,0 +1,1 @@
+JMH S 17 bench.Scalability S 63 bench.generated.Scalability_measureBatchGradientDescend_jmhTest S 27 measureBatchGradientDescend S 11 AverageTime E A 1 1 1 E I 1 5 T 3 1 s E I 1 5 T 3 1 s E I 1 1 E E E E E E U 7 SECONDS E E 
