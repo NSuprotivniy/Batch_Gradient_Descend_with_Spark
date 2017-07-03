@@ -15,12 +15,13 @@ public class Main {
 
         String sample_file_name = args[0];
         String config_file_name = args[1];
-        double learning_rate = Double.parseDouble(args[2]);
-        double convergence_criteria = Double.parseDouble(args[3]);
-        int max_iteration = Integer.parseInt(args[4]);
+        String masterURLs = args[2];
+        double learning_rate = Double.parseDouble(args[3]);
+        double convergence_criteria = Double.parseDouble(args[4]);
+        int max_iteration = Integer.parseInt(args[5]);
 
 
-        SparkConf conf = new SparkConf().setAppName("Batch Gradient Descend").setMaster("local[*]");
+        SparkConf conf = new SparkConf().setAppName("Batch Gradient Descend").setMaster(masterURLs);
         JavaSparkContext jsc = new JavaSparkContext(conf);
 
         DataConfig dataConfig = new DataConfig(config_file_name);
